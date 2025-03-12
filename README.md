@@ -1,2 +1,2 @@
-Dependencias
+
 pip install pycryptodome
