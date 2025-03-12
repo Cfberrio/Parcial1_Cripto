@@ -1,0 +1,31 @@
+import socket
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+
+def run_block_client(modo, tecnica='NINGUNA'):
+    # Leer clave del archivo
+    with open('aes_key.bin', 'rb') as f:
+        key = f.read()
+
+    HOST = 'localhost'
+    PORT = 65433
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((HOST, PORT))
+        s.sendall(f"{modo},{tecnica}".encode())
+        iv = s.recv(16) if modo != 'ECB' else b''
+
+        # Configurar AES
+        if modo == 'CBC':
+            cipher = AES.new(key, AES.MODE_CBC, iv=iv)
+        elif modo == 'ECB':
+            cipher = AES.new(key, AES.MODE_ECB)
+        elif modo == 'CTR':
+            cipher = AES.new(key, AES.MODE_CTR, nonce=iv[:8])
+
+        mensaje = b"Hola servidor desde cifrador de bloque!"
+        cifrado = cipher.encrypt(pad(mensaje, AES.block_size)) if modo != 'CTR' else cipher.encrypt(mensaje)
+        s.sendall(cifrado)
+
+if __name__ == '__main__':
+    run_block_client('CBC')  # Modos: CBC, ECB, CTR

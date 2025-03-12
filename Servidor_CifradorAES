@@ -1,0 +1,37 @@
+import socket
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Random import get_random_bytes
+
+def run_block_server():
+    # Generar clave y guardar en archivo (simula canal alterno)
+    key = get_random_bytes(32)
+    with open('aes_key.bin', 'wb') as f:
+        f.write(key)
+
+    HOST = 'localhost'
+    PORT = 65433
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((HOST, PORT))
+        s.listen()
+        conn, addr = s.accept()
+        with conn:
+            # Recibir modo y técnica
+            modo, tecnica = conn.recv(1024).decode().split(',')
+            iv = get_random_bytes(16) if modo != 'ECB' else b''
+            conn.send(iv)  # Enviar IV para modos que lo requieran
+
+            # Configurar AES
+            cipher = AES.new(key, AES.MODE_CBC, iv=iv) if modo == 'CBC' else AES.new(key, AES.MODE_ECB) if modo == 'ECB' else AES.new(key, AES.MODE_CTR, nonce=iv[:8])
+
+            # Descifrar mensajes
+            while True:
+                data = conn.recv(1024)
+                if not data:
+                    break
+                decrypted = unpad(cipher.decrypt(data), AES.block_size) if modo != 'CTR' else cipher.decrypt(data)
+                print(f"Mensaje descifrado: {decrypted.decode()}")
+
+if __name__ == '__main__':
+    run_block_server()
