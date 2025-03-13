@@ -2,6 +2,8 @@ import socket
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Random import get_random_bytes
+from dotenv import load_dotenv
+import os
 
 def run_block_server():
     # Generar clave y guardar en archivo (simula canal alterno)
@@ -9,14 +11,17 @@ def run_block_server():
     with open('aes_key.bin', 'wb') as f:
         f.write(key)
 
-    HOST = 'localhost'
-    PORT = 65433
+    load_dotenv()
+
+    HOST = os.getenv("HOST", "127.0.0.1")
+    PORT = int(os.getenv("PORT", 65432))
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST, PORT))
         s.listen()
         conn, addr = s.accept()
         with conn:
+            print(f"Conexión establecida desde {addr}")
             # Recibir modo y técnica
             modo, tecnica = conn.recv(1024).decode().split(',')
             iv = get_random_bytes(16) if modo != 'ECB' else b''

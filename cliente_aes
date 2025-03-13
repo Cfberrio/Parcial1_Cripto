@@ -1,14 +1,18 @@
 import socket
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from dotenv import load_dotenv
+import os
 
 def run_block_client(modo, tecnica='NINGUNA'):
     # Leer clave del archivo
     with open('aes_key.bin', 'rb') as f:
         key = f.read()
 
-    HOST = 'localhost'
-    PORT = 65433
+    load_dotenv()
+
+    HOST = os.getenv("HOST", "127.0.0.1")
+    PORT = int(os.getenv("PORT", 65432))
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))

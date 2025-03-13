@@ -1,0 +1,53 @@
+import socket
+import os
+from Crypto.Cipher import ChaCha20, Salsa20
+from Crypto.Random import get_random_bytes
+from dotenv import load_dotenv
+
+def run_server():
+    load_dotenv()
+
+    HOST = os.getenv("HOST", "127.0.0.1")
+    PORT = int(os.getenv("PORT", 65432))
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((HOST, PORT))
+        s.listen(1)
+        print(f"Servidor escuchando en {HOST}:{PORT}")
+        
+        conn, addr = s.accept()
+        with conn:
+            print(f"Conexión establecida desde {addr}")
+            
+            # Preguntar por el algoritmo de cifrado
+            conn.sendall(b"Elija el algoritmo: salsa20 o chacha20\n")
+            choice = conn.recv(1024).decode().strip().lower()
+            
+            if choice == "chacha20":
+                key = get_random_bytes(32)  # Clave de 256 bits
+                nonce = get_random_bytes(12)  # Nonce de 12 bytes
+                print("El cliente eligió ChaCha20")
+                conn.sendall(b"ChaCha20 seleccionado\n" + key + nonce)
+                cipher = ChaCha20.new(key=key, nonce=nonce)
+            elif choice == "salsa20":
+                key = get_random_bytes(32)  # Clave de 256 bits
+                nonce = get_random_bytes(8)  # Nonce de 8 bytes
+                print("El cliente eligió Salsa20")
+                conn.sendall(b"Salsa20 seleccionado\n" + key + nonce)
+                cipher = Salsa20.new(key=key, nonce=nonce)
+            else:
+                conn.sendall(b"Opcion invalida. Cerrando conexion.\n")
+                return
+
+            # Recibir y descifrar mensajes
+            while True:
+                data = conn.recv(1024)
+                if not data:
+                    print("Cerrando conexión...")
+                    break
+                decrypted = cipher.decrypt(data)
+                print(f"Mensaje descifrado: {decrypted.decode()}")
+
+if __name__ == "__main__":
+    run_server()

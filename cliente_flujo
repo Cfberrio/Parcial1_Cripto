@@ -1,0 +1,56 @@
+import socket
+import os
+from Crypto.Cipher import ChaCha20, Salsa20
+from dotenv import load_dotenv
+
+def run_client():
+    load_dotenv()
+
+    HOST = os.getenv("HOST", "127.0.0.1")
+    PORT = int(os.getenv("PORT", 65432))
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((HOST, PORT))
+        
+        # Recibir la pregunta del servidor sobre el cifrado
+        question = s.recv(1024).decode()
+        print(question)
+
+        # Enviar elección del cifrado
+        choice = input("Elige el algoritmo (salsa20 o chacha20): ").strip().lower()
+        s.sendall(choice.encode())
+
+        # Recibir confirmación del servidor junto con clave y nonce
+        response = s.recv(1024)
+        if b"Opcion invalida" in response:
+            print(response.decode())
+            return
+
+        print(response.split(b"\n")[0].decode())  # Imprime el mensaje de confirmación
+        key_nonce = response.split(b"\n")[1]  # Extrae clave y nonce
+
+        key = key_nonce[:32]  # Primeros 32 bytes: clave
+        nonce = key_nonce[32:]  # Resto: nonce
+
+        # Configurar el cifrador según la elección
+        if choice == "chacha20":
+            cipher = ChaCha20.new(key=key, nonce=nonce)
+        elif choice == "salsa20":
+            cipher = Salsa20.new(key=key, nonce=nonce)
+        else:
+            print("Error en la selección del cifrado.")
+            return
+
+        # Bucle para enviar múltiples mensajes
+        while True:
+            mensaje = input("Escribe un mensaje (o 'salir' para terminar): ")
+            if mensaje.lower() == "salir":
+                print("Cerrando conexión...")
+                break
+
+            cifrado = cipher.encrypt(mensaje.encode())  # Cifrar mensaje
+            s.sendall(cifrado)  # Enviar mensaje cifrado
+            print("Mensaje cifrado enviado.")
+
+if __name__ == "__main__":
+    run_client()
