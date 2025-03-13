@@ -4,8 +4,17 @@ from Crypto.Util.Padding import pad
 from dotenv import load_dotenv
 import os
 
-def run_block_client(modo, tecnica='NINGUNA'):
-    # Leer clave del archivo
+def run_block_client():
+    modo = input("Elige el modo de operación (ECB, CBC, CTR): ").strip().upper()
+    tecnica = input("Elige la técnica de seguridad (NINGUNA, DOBLE, TRIPLE, BLANQUEO): ").strip().upper()
+
+    if modo not in ["ECB", "CBC", "CTR"] or tecnica not in ["NINGUNA", "DOBLE", "TRIPLE", "BLANQUEO"]:
+        print("Modo o técnica inválidos. Inténtalo de nuevo.")
+        return
+    if modo == "ECB" and tecnica != "NINGUNA":
+        print("El modo ECB no es compatible con ninguna técnica de seguridad.")
+        return
+
     with open('aes_key.bin', 'rb') as f:
         key = f.read()
 
@@ -19,17 +28,33 @@ def run_block_client(modo, tecnica='NINGUNA'):
         s.sendall(f"{modo},{tecnica}".encode())
         iv = s.recv(16) if modo != 'ECB' else b''
 
-        # Configurar AES
-        if modo == 'CBC':
-            cipher = AES.new(key, AES.MODE_CBC, iv=iv)
-        elif modo == 'ECB':
-            cipher = AES.new(key, AES.MODE_ECB)
-        elif modo == 'CTR':
-            cipher = AES.new(key, AES.MODE_CTR, nonce=iv[:8])
+        extra_keys = []
+        if tecnica in ['DOBLE', 'TRIPLE', 'BLANQUEO']:
+            cipher_cbc = AES.new(key, AES.MODE_CBC, iv=iv)
+            encrypted_keys = s.recv(64)
+            decrypted_keys = cipher_cbc.decrypt(encrypted_keys)
+            extra_keys = [decrypted_keys[i:i+32] for i in range(0, len(decrypted_keys), 32)]
 
-        mensaje = b"Hola servidor desde cifrador de bloque!"
-        cifrado = cipher.encrypt(pad(mensaje, AES.block_size)) if modo != 'CTR' else cipher.encrypt(mensaje)
-        s.sendall(cifrado)
+        cipher = AES.new(key, AES.MODE_CBC, iv=iv) if modo == 'CBC' else \
+                 AES.new(key, AES.MODE_ECB) if modo == 'ECB' else \
+                 AES.new(key, AES.MODE_CTR, nonce=iv[:8])
+
+        while True:
+            mensaje = input("Escribe tu mensaje (o 'SALIR' para finalizar): ")
+            if mensaje.upper() == "SALIR":
+                print("Cerrando conexión...")
+                break
+
+            mensaje_bytes = pad(mensaje.encode(), AES.block_size)
+
+            if tecnica == 'DOBLE' and len(extra_keys) >= 1:
+                cipher2 = AES.new(extra_keys[0], AES.MODE_CBC, iv=iv)
+                cifrado = cipher.encrypt(mensaje_bytes)
+                cifrado = cipher2.encrypt(cifrado)  # Sin volver a aplicar pad
+            else:
+                cifrado = cipher.encrypt(mensaje_bytes) if modo != 'CTR' else cipher.encrypt(mensaje.encode())
+
+            s.sendall(cifrado)
 
 if __name__ == '__main__':
-    run_block_client('CBC')  # Modos: CBC, ECB, CTR
+    run_block_client()

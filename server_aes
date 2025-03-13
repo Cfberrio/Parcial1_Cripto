@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 import os
 
 def run_block_server():
-    # Generar clave y guardar en archivo (simula canal alterno)
     key = get_random_bytes(32)
     with open('aes_key.bin', 'wb') as f:
         f.write(key)
@@ -15,27 +14,49 @@ def run_block_server():
 
     HOST = os.getenv("HOST", "127.0.0.1")
     PORT = int(os.getenv("PORT", 65432))
-
+    
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((HOST, PORT))
-        s.listen()
+        s.listen(1)
+        print(f"Servidor escuchando en {HOST}:{PORT}")
         conn, addr = s.accept()
         with conn:
             print(f"Conexión establecida desde {addr}")
-            # Recibir modo y técnica
             modo, tecnica = conn.recv(1024).decode().split(',')
             iv = get_random_bytes(16) if modo != 'ECB' else b''
-            conn.send(iv)  # Enviar IV para modos que lo requieran
+            conn.send(iv)
 
-            # Configurar AES
-            cipher = AES.new(key, AES.MODE_CBC, iv=iv) if modo == 'CBC' else AES.new(key, AES.MODE_ECB) if modo == 'ECB' else AES.new(key, AES.MODE_CTR, nonce=iv[:8])
+            extra_keys = []
+            if tecnica in ['DOBLE', 'TRIPLE', 'BLANQUEO']:
+                extra_keys.append(get_random_bytes(32))
+            if tecnica == 'TRIPLE':
+                extra_keys.append(get_random_bytes(32))
 
-            # Descifrar mensajes
+            if extra_keys:
+                cipher_cbc = AES.new(key, AES.MODE_CBC, iv=iv)
+                extra_keys_padded = pad(b''.join(extra_keys), AES.block_size)
+                encrypted_keys = cipher_cbc.encrypt(extra_keys_padded)
+                conn.send(encrypted_keys)
+
+            cipher = AES.new(key, AES.MODE_CBC, iv=iv) if modo == 'CBC' else \
+                     AES.new(key, AES.MODE_ECB) if modo == 'ECB' else \
+                     AES.new(key, AES.MODE_CTR, nonce=iv[:8])
+
             while True:
                 data = conn.recv(1024)
                 if not data:
                     break
-                decrypted = unpad(cipher.decrypt(data), AES.block_size) if modo != 'CTR' else cipher.decrypt(data)
+                
+                if tecnica == 'DOBLE' and len(extra_keys) >= 1:
+                    cipher2 = AES.new(extra_keys[0], AES.MODE_CBC, iv=iv)
+                    decrypted = cipher2.decrypt(data)  # Primero descifrar con la clave secundaria
+                    decrypted = cipher.decrypt(decrypted)  # Luego con la clave principal
+                    decrypted = unpad(decrypted, AES.block_size)  # Solo aplicar unpad al final
+                else:
+                    decrypted = cipher.decrypt(data)
+                    decrypted = unpad(decrypted, AES.block_size) if modo != 'CTR' else decrypted
+
                 print(f"Mensaje descifrado: {decrypted.decode()}")
 
 if __name__ == '__main__':
